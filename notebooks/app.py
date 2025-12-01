@@ -1,52 +1,69 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import pickle
 
-# ------------------------------
-# Load Model
-# ------------------------------
+# -----------------------------
+# Load model bundle
+# -----------------------------
 @st.cache_resource
-def load_model():
+def load_bundle():
     with open("model.pkl", "rb") as f:
         return pickle.load(f)
 
-model_data = load_model()
-model = model_data["model"]
-team_stats = model_data["team_stats"]
+bundle = load_bundle()
 
-teams = sorted(team_stats["team"].unique())
+model          = bundle["model"]
+feature_names  = bundle["feature_names"]   # list like ['xGoalsPercentage_diff', 'corsiPercentage_diff']
+team_summary   = bundle["team_summary"]    # season-to-date team averages
+base_cols      = bundle["base_cols"]       # ['xGoalsPercentage', 'corsiPercentage']
 
-# ------------------------------
-# Feature Builder
-# ------------------------------
-def build_matchup(home, away):
-    h = team_stats[team_stats["team"] == home].iloc[0]
-    a = team_stats[team_stats["team"] == away].iloc[0]
+# -----------------------------
+# App UI
+# -----------------------------
+st.title("🏒 NHL Win Predictor — XGBoost Model")
 
-    features = {
-        "win_pct_diff": h["win_pct"] - a["win_pct"],
-        "xg_pct_diff": h["xg_pct"] - a["xg_pct"],
-        "corsi_pct_diff": h["corsi_pct"] - a["corsi_pct"],
-    }
-
-    return pd.DataFrame([features])
-
-# ------------------------------
-# UI
-# ------------------------------
-st.title("🏒 NHL Matchup Predictor (Team-Level Model)")
+teams = sorted(team_summary["team"].unique())
 
 home = st.selectbox("Home Team", teams)
 away = st.selectbox("Away Team", [t for t in teams if t != home])
 
+# -----------------------------
+# Build feature vector (home-away diffs)
+# -----------------------------
+def build_features(home_team, away_team):
+    h = team_summary[team_summary["team"] == home_team].iloc[0]
+    a = team_summary[team_summary["team"] == away_team].iloc[0]
+
+    feature_dict = {}
+
+    # compute diffs for all base columns: home minus away
+    for col in base_cols:
+        diff_val = float(h[col]) - float(a[col])
+        feature_dict[f"{col}_diff"] = diff_val
+
+    # reorder for model
+    X = pd.DataFrame([[feature_dict[col] for col in feature_names]],
+                     columns=feature_names)
+
+    return X
+
+# -----------------------------
+# Predict
+# -----------------------------
 if st.button("Predict"):
-    X = build_matchup(home, away)
-    prob_home = model.predict_proba(X)[0][1]
+    X = build_features(home, away)
+    prob_home = float(model.predict_proba(X)[0][1])
     prob_away = 1 - prob_home
 
     st.subheader("📊 Win Probabilities")
-    st.write(f"**{home} Win Probability:** {prob_home*100:.2f}%")
-    st.write(f"**{away} Win Probability:** {prob_away*100:.2f}%")
+    st.write(f"**{home} (HOME)**: {prob_home*100:.2f}%")
+    st.write(f"**{away} (AWAY)**: {prob_away*100:.2f}%")
 
-    winner = home if prob_home > 0.5 else away
-    st.success(f"🏆 Predicted Winner: **{winner}**")
+    if prob_home > 0.5:
+        st.success(f"🏆 Predicted Winner: **{home}**")
+    else:
+        st.success(f"🏆 Predicted Winner: **{away}**")
+
+    with st.expander("Show model input features"):
+        st.dataframe(X)
