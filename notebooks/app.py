@@ -1,7 +1,6 @@
 import streamlit as st
 import pickle
 import pandas as pd
-from config import FEATURE_COLS
 
 # Load model and data
 @st.cache_resource
@@ -20,34 +19,38 @@ FEATURE_COLS = model_data['feature_cols']
 
 df = load_data()
 
-# Prediction function
-def predict_game(team_a, team_b, is_team_a_home=True):
-    # Get most recent game for each team
-    team_a_data = df[df['playerTeam'] == team_a].sort_values('gameDate', ascending=False).iloc[0]
-    team_b_data = df[df['playerTeam'] == team_b].sort_values('gameDate', ascending=False).iloc[0]
-    
-    # Build feature vector: team_a stats - team_b stats
-    features = {}
-    for col in FEATURE_COLS:
-        if 'home' in col.lower():  # Handle home/away indicator
-            features[col] = 1 if is_team_a_home else 0
-        else:
-            features[col] = team_a_data[col] - team_b_data[col]
-    
-    # Convert to DataFrame and predict
-    features_df = pd.DataFrame([features])[FEATURE_COLS]
+def predict_game(home_team, away_team):
+    matchup = (
+        df[(df['home_team'] == home_team) & (df['away_team'] == away_team)]
+        .sort_values('gameDate_home', ascending=False)
+    )
+
+    if matchup.empty:
+        raise ValueError(f"No historical games found for {home_team} (home) vs {away_team} (away).")
+
+    row = matchup.iloc[0]
+
+    # Ensure numeric dtypes for XGBoost
+    features_series = row[FEATURE_COLS].astype(float)
+    features_df = features_series.to_frame().T  # shape (1, n_features)
+
     proba = model.predict_proba(features_df)[0]
-    
+
+    classes = list(model.classes_)
+    home_win_idx = classes.index(1)
+    p_home = proba[home_win_idx]
+    p_away = 1.0 - p_home
+
     return {
-        team_a: proba[1],
-        team_b: proba[0]
+        home_team: p_home,
+        away_team: p_away
     }
 
 # UI
 st.title('NHL Game Predictor')
 st.write('Predict the outcome of an NHL matchup based on recent team performance')
 
-teams = sorted(df['playerTeam'].unique())
+teams = sorted(df['home_team'].unique())
 
 col1, col2 = st.columns(2)
 
@@ -61,7 +64,7 @@ if st.button('Predict Winner'):
     if team_a == team_b:
         st.error('Please select two different teams!')
     else:
-        result = predict_game(team_a, team_b, is_team_a_home=True)
+        result = predict_game(team_a, team_b)
         
         st.subheader('Prediction Results')
         
