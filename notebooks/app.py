@@ -63,7 +63,7 @@ if st.button('Predict Winner'):
     else:
         result = predict_game(team_a, team_b, is_team_a_home=True)
         
-        st.subheader('📊 Prediction Results')
+        st.subheader('Prediction Results')
         
         col1, col2 = st.columns(2)
         
