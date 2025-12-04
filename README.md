@@ -25,8 +25,7 @@ The project follows a complete machine learning pipeline:
 
 ## 📊 Dataset
 The dataset is available from [MoneyPuck.com](https://moneypuck.com/data.htm).  
-Please download `all_teams.csv` and place it in the following path:
+Please download `all_teams.csv` and place it in the following path: NHL-Game-Prediction-CP322/data/raw 
 
-NHL-Game-Prediction-CP322/data/raw 
 Use "streamlit run app.py" to run
 
